@@ -1,0 +1,97 @@
+.page {
+    min-height:100vh;
+    padding:40px 24px 80px
+}
+
+.container {
+    width:min(1000px,100%);
+    margin:0 auto
+}
+
+.back {
+    color:inherit;
+    text-decoration:none;
+    opacity:.65
+}
+
+.header {
+    padding:80px 0 56px;
+    max-width:720px
+}
+
+.eyebrow {
+    letter-spacing:.18em;
+    font-size:.75rem;
+    font-weight:700
+}
+
+.header h1 {
+    font-size:clamp(2.5rem,6vw,5rem);
+    line-height:1;
+    margin:14px 0 20px
+}
+
+.header p {
+    font-size:1.15rem;
+    line-height:1.7;
+    opacity:.7
+}
+
+.packages {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:20px;
+    margin-top:24px
+}
+
+.package {
+    min-height:280px;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    padding:28px;
+    border:1px solid #ddd;
+    border-radius:20px;
+    background:#fff
+}
+
+.package h3 {
+    margin-top:0;
+    font-size:1.5rem
+}
+
+.package p {
+    line-height:1.6;
+    opacity:.7
+}
+
+.package small {
+    opacity:.55
+}
+
+.footer {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    margin-top:32px
+}
+
+.footer strong {
+    font-size:1.35rem
+}
+
+.button {
+    padding:12px 18px;
+    border-radius:999px;
+    background:#1f1f1f;
+    color:#fff;
+    text-decoration:none;
+    font-weight:700
+}
+
+@media(max-width:700px) {
+    .packages {
+        grid-template-columns:1fr
+    }
+}

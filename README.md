@@ -1,34 +1,18 @@
 # PhotoBooking
 
-Projeto demonstrativo de uma plataforma web para fotógrafos apresentarem seus ensaios,
-pacotes e conduzirem clientes até o agendamento via WhatsApp.
+Projeto demonstrativo de uma plataforma web para fotógrafos apresentarem seus ensaios, pacotes e conduzirem clientes até o agendamento via WhatsApp.
 
-## Stack
+## M2 — Catálogo
 
-- Frontend: Next.js 14 + TypeScript + CSS Modules
-- Backend: Python 3.11 + FastAPI
-- Database: PostgreSQL 16
-- ORM: SQLAlchemy
-- Migrations: Alembic
-- Infra: Docker Compose
-
-## Objetivo do MVP
-
-1. Apresentar tipos de ensaio.
-2. Apresentar pacotes e preços.
-3. Consultar disponibilidade por meio de um provider de agenda.
-4. Registrar uma intenção de agendamento.
-5. Gerar uma mensagem estruturada para WhatsApp.
-
-## Estrutura
-
-```text
-photobooking/
-├── backend/
-├── frontend/
-├── docker-compose.yml
-└── README.md
-```
+- `PhotographySession` e `SessionPackage`
+- relacionamento SQLAlchemy one-to-many
+- migration Alembic
+- seed inicial
+- repository e schemas Pydantic
+- endpoints REST
+- páginas dinâmicas de ensaio
+- seleção de pacote
+- rota inicial de agendamento
 
 ## Executar
 
@@ -36,18 +20,33 @@ photobooking/
 docker compose up --build
 ```
 
-Frontend: http://localhost:3000
+Em outro terminal:
 
-API: http://localhost:8000
+```bash
+docker compose exec backend alembic upgrade head
+docker compose exec backend python -m app.db.seed
+```
 
-Swagger: http://localhost:8000/docs
+- Frontend: http://localhost:3000
+- API: http://localhost:8000
+- Swagger: http://localhost:8000/docs
+
+Exemplo: http://localhost:3000/ensaios/familia
+
+## API
+
+```text
+GET /api/v1/sessions
+GET /api/v1/sessions/{slug}
+GET /health
+```
 
 ## Roadmap
 
-- [x] Fundação Docker + PostgreSQL + FastAPI + Next.js
-- [ ] Modelos e migrations
-- [ ] Catálogo de ensaios
-- [ ] Pacotes
+- [x] Fundação
+- [x] Modelos e migration
+- [x] Catálogo de ensaios
+- [x] Pacotes
 - [ ] Provider de disponibilidade
 - [ ] Agendamento
 - [ ] Integração WhatsApp
