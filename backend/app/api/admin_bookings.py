@@ -16,6 +16,8 @@ from app.integrations.google.calendar import (
     GoogleCalendarUnavailable,
 )
 from app.repositories.booking import BookingRepository
+from app.services.audit import record_audit
+from app.core.metrics import BOOKINGS_TOTAL
 
 router = APIRouter(prefix="/admin/bookings", tags=["admin-bookings"])
 logger = logging.getLogger(__name__)
@@ -95,6 +97,15 @@ def cancel_booking(booking_id: int, _username: str = Depends(get_admin_username)
     logger.info("booking_canceled booking_id=%s", booking.id)
     db.commit()
     db.refresh(booking)
+    record_audit(
+        db,
+        action="booking.cancelled",
+        entity_type="booking",
+        entity_id=str(booking.id),
+        actor=_username,
+        metadata={"provider": booking.provider},
+    )
+    BOOKINGS_TOTAL.labels(operation="cancel", provider=booking.provider, status=booking.status).inc()
     return _serialize(booking)
 
 
@@ -152,4 +163,13 @@ def reschedule_booking(
     booking.end_at = request.start_at + timedelta(minutes=booking.package.duration_minutes)
     db.commit()
     db.refresh(booking)
+    record_audit(
+        db,
+        action="booking.rescheduled",
+        entity_type="booking",
+        entity_id=str(booking.id),
+        actor=_username,
+        metadata={"provider": booking.provider, "start_at": request.start_at.isoformat()},
+    )
+    BOOKINGS_TOTAL.labels(operation="reschedule", provider=booking.provider, status=booking.status).inc()
     return _serialize(booking)

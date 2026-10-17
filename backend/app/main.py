@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import make_asgi_app
 
 from app.api.auth import router as auth_router
 from app.api.booking import router as booking_router
@@ -13,17 +14,27 @@ from app.api.sessions import router as sessions_router
 from app.core.health import check_database
 from app.core.logging import configure_logging, request_id_ctx
 from app.core.request_id import RequestIdMiddleware
+from app.core.metrics_middleware import MetricsMiddleware
+from app.core.rate_limit_middleware import RateLimitMiddleware
+from app.core.config import settings
 
 configure_logging()
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="PhotoBooking API",
-    version="0.6.0",
+    version="0.7.0",
     description="API demonstrativa para catálogo e agendamento de ensaios fotográficos.",
 )
 
 app.add_middleware(RequestIdMiddleware)
+app.add_middleware(MetricsMiddleware)
+if settings.rate_limit_enabled:
+    app.add_middleware(
+        RateLimitMiddleware,
+        limit=settings.rate_limit_requests,
+        window_seconds=settings.rate_limit_window_seconds,
+    )
 
 # origins = ["http://localhost:3000"]
 origins = ["*"]
@@ -42,6 +53,9 @@ app.include_router(sessions_router, prefix="/api/v1")
 app.include_router(booking_router, prefix="/api/v1")
 app.include_router(google_router, prefix="/api/v1")
 app.include_router(admin_bookings_router, prefix="/api/v1")
+
+# Prometheus exposition endpoint. In production, restrict this endpoint at the reverse proxy/network layer.
+app.mount("/metrics", make_asgi_app())
 
 
 @app.exception_handler(RequestValidationError)

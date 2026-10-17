@@ -281,3 +281,29 @@ O teste de integração não cria nem destrói o banco; ele espera que o ambient
 - usuários administrativos persistidos, Argon2 e RBAC;
 - auditoria de alterações;
 - OAuth Google por tenant.
+
+## M11 — Métricas, rate limiting e auditoria
+
+- Métricas Prometheus em `GET /metrics`.
+- Contadores de requests, duração HTTP, rate-limit e ciclo de vida de reservas.
+- Rate limiting em memória por cliente + endpoint, configurável por ambiente.
+- Auditoria persistida em PostgreSQL para criação, cancelamento e reagendamento de reservas.
+- Cada evento de auditoria registra ação, entidade, ator, `request_id`, metadados e timestamp.
+- Para múltiplas réplicas, o rate limiter em memória deve ser substituído por Redis ou outro storage compartilhado.
+- Em produção, o endpoint `/metrics` deve ser protegido na rede/reverse proxy.
+
+### M11 — testes
+
+```bash
+cd backend
+pytest
+pytest -m integration
+```
+
+### Decisões de produção do M11
+
+O rate limiter atual é propositalmente simples: funciona dentro de um único processo e não exige infraestrutura adicional. Em um deployment com múltiplas réplicas, a evolução natural é Redis para compartilhar os buckets entre instâncias.
+
+As métricas evitam usar IDs numéricos/UUIDs diretamente como labels para reduzir cardinalidade. O endpoint `/metrics` deve ficar acessível apenas para o sistema de monitoramento, normalmente por rede privada ou reverse proxy.
+
+A auditoria é best-effort: uma falha ao gravar o log é registrada, mas não derruba uma operação de negócio já concluída. Para requisitos regulatórios mais rígidos, o próximo passo seria um mecanismo transacional/outbox.

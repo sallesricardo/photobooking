@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     admin_session_minutes: int = 60
     admin_cookie_secure: bool = False
 
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = 60
+    rate_limit_window_seconds: int = 60
+
     google_client_id: str = ""
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/api/v1/google/callback"

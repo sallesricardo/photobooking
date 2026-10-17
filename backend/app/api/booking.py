@@ -24,6 +24,8 @@ from app.repositories.booking import BookingRepository
 from app.repositories.session import SessionRepository
 from app.services.agenda import AgendaService
 from app.services.whatsapp import WhatsAppService
+from app.services.audit import record_audit
+from app.core.metrics import BOOKINGS_TOTAL
 
 router = APIRouter(prefix="/booking", tags=["booking"])
 logger = logging.getLogger(__name__)
@@ -188,5 +190,14 @@ def create_whatsapp_booking(
             except Exception:
                 pass
         raise HTTPException(status_code=500, detail="Não foi possível registrar a reserva.")
+    record_audit(
+        db,
+        action="booking.created",
+        entity_type="booking",
+        entity_id=str(created.id),
+        actor="public",
+        metadata={"provider": created.provider, "session_slug": request.session_slug},
+    )
+    BOOKINGS_TOTAL.labels(operation="create", provider=created.provider, status=created.status).inc()
     logger.info("booking_created booking_id=%s provider=%s request_id=%s", created.id, created.provider, request_id_ctx.get())
     return _build_response(created)
