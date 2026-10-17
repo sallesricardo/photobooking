@@ -213,3 +213,14 @@ Os testes existentes cobrem a geração do link/mensagem de WhatsApp e a transfo
 - auditoria;
 - múltiplos calendários;
 - observabilidade e rate limiting.
+
+
+## M8 — Idempotência e ciclo de vida das reservas
+
+A reserva agora usa `Idempotency-Key` para tornar retries seguros e evitar duplicação de eventos. O painel administrativo permite cancelar e reagendar reservas confirmadas. O cancelamento remove o evento do Google Calendar; o reagendamento atualiza o evento existente após nova validação de disponibilidade.
+
+Endpoints administrativos:
+- `POST /api/v1/admin/bookings/{id}/cancel`
+- `POST /api/v1/admin/bookings/{id}/reschedule`
+
+Migration: `0003_booking_lifecycle`.

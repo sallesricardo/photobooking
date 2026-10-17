@@ -34,6 +34,10 @@ export default function AdminPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(true);
+  const [actionId, setActionId] = useState<number | null>(null);
+  const [rescheduleId, setRescheduleId] = useState<number | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleTime, setRescheduleTime] = useState("");
 
   async function loadSession() {
     try {
@@ -103,6 +107,50 @@ export default function AdminPage() {
     }
     setPassword("");
     await loadSession();
+  }
+
+  async function cancelBooking(id: number) {
+    if (!window.confirm("Cancelar esta reserva? O evento também será removido da agenda.")) return;
+    setActionId(id);
+    setError("");
+    try {
+      const response = await fetch(`${API_URL}/api/v1/admin/bookings/${id}/cancel`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "Não foi possível cancelar a reserva.");
+      await loadBookings();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao cancelar reserva.");
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function rescheduleBooking(id: number) {
+    if (!rescheduleDate || !rescheduleTime) return;
+    setActionId(id);
+    setError("");
+    try {
+      const localDate = new Date(`${rescheduleDate}T${rescheduleTime}:00`);
+      const response = await fetch(`${API_URL}/api/v1/admin/bookings/${id}/reschedule`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ start_at: localDate.toISOString() }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "Não foi possível reagendar a reserva.");
+      setRescheduleId(null);
+      setRescheduleDate("");
+      setRescheduleTime("");
+      await loadBookings();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao reagendar reserva.");
+    } finally {
+      setActionId(null);
+    }
   }
 
   async function handleLogout() {
@@ -176,9 +224,26 @@ export default function AdminPage() {
                   <p>{booking.package} · R$ {Number(booking.price).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
                 </div>
                 <div className={styles.bookingMeta}>
-                  <span className={styles.badgeOk}>{booking.status.toUpperCase()}</span>
+                  <span className={booking.status === "canceled" ? styles.badge : styles.badgeOk}>{booking.status.toUpperCase()}</span>
                   <span>{booking.provider === "google" ? "Google Calendar" : "Mock Calendar"}</span>
                   <a href={booking.whatsapp_url} target="_blank" rel="noreferrer">Abrir WhatsApp</a>
+                  {booking.status === "confirmed" && (
+                    <>
+                      <button type="button" className={styles.secondary} disabled={actionId === booking.id} onClick={() => {
+                        setRescheduleId(rescheduleId === booking.id ? null : booking.id);
+                        setRescheduleDate(booking.start_at.slice(0, 10));
+                        setRescheduleTime(new Date(booking.start_at).toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", hour12: false }));
+                      }}>Reagendar</button>
+                      <button type="button" className={styles.logout} disabled={actionId === booking.id} onClick={() => cancelBooking(booking.id)}>Cancelar</button>
+                    </>
+                  )}
+                  {rescheduleId === booking.id && booking.status === "confirmed" && (
+                    <div className={styles.rescheduleForm}>
+                      <input type="date" value={rescheduleDate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setRescheduleDate(e.target.value)} />
+                      <input type="time" value={rescheduleTime} onChange={(e) => setRescheduleTime(e.target.value)} />
+                      <button type="button" className={styles.primary} disabled={actionId === booking.id} onClick={() => rescheduleBooking(booking.id)}>Salvar horário</button>
+                    </div>
+                  )}
                 </div>
               </article>
             ))}

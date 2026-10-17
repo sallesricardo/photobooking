@@ -80,7 +80,10 @@ export default function BookingClient() {
     try {
       const response = await fetch(`${API_URL}/api/v1/booking/whatsapp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": crypto.randomUUID(),
+        },
         body: JSON.stringify({
           session_slug: sessionSlug,
           package_id: selectedPackage?.id,

@@ -15,6 +15,7 @@ class Booking(Base):
     end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     provider: Mapped[str] = mapped_column(String(40), nullable=False)
     provider_event_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="confirmed")
     customer_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     customer_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)

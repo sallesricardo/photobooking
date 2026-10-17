@@ -250,3 +250,19 @@
     align-items: flex-start;
   }
 }
+
+.rescheduleForm {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+  width: 100%;
+}
+
+.rescheduleForm input {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+}

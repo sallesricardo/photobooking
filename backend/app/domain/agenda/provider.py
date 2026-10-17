@@ -19,3 +19,15 @@ class AgendaProvider(Protocol):
         duration_minutes: int,
     ) -> list[AvailabilitySlot]:
         ...
+
+    def cancel_booking(self, *, provider_event_id: str) -> None:
+        ...
+
+    def reschedule_booking(
+        self,
+        *,
+        provider_event_id: str,
+        new_start_at: datetime,
+        duration_minutes: int,
+    ) -> None:
+        ...

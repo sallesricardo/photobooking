@@ -35,3 +35,16 @@ class MockAgendaProvider(AgendaProvider):
             current += step
 
         return slots
+
+    def cancel_booking(self, *, provider_event_id: str) -> None:
+        # Mock provider has no persistent external event store.
+        return None
+
+    def reschedule_booking(
+        self,
+        *,
+        provider_event_id: str,
+        new_start_at: datetime,
+        duration_minutes: int,
+    ) -> None:
+        return None

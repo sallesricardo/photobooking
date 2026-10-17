@@ -139,6 +139,73 @@ class GoogleCalendarProvider:
         created = service.events().insert(calendarId=self.calendar_id, body=event).execute()
         return created["id"]
 
+    def cancel_booking(self, *, provider_event_id: str) -> None:
+        service = self._service()
+        try:
+            service.events().delete(
+                calendarId=self.calendar_id,
+                eventId=provider_event_id,
+            ).execute()
+        except HttpError as exc:
+            if getattr(exc, "resp", None) is not None and exc.resp.status == 404:
+                return
+            raise
+
+    def reschedule_booking(
+        self,
+        *,
+        provider_event_id: str,
+        new_start_at: datetime,
+        duration_minutes: int,
+    ) -> None:
+        service = self._service()
+        new_start_at = self._normalize_datetime(new_start_at)
+        new_end_at = new_start_at + timedelta(minutes=duration_minutes)
+
+        existing = service.events().get(
+            calendarId=self.calendar_id,
+            eventId=provider_event_id,
+        ).execute()
+
+        response = (
+            service.freebusy()
+            .query(
+                body={
+                    "timeMin": new_start_at.isoformat(),
+                    "timeMax": new_end_at.isoformat(),
+                    "timeZone": settings.app_timezone,
+                    "items": [{"id": self.calendar_id}],
+                }
+            )
+            .execute()
+        )
+
+        busy = response.get("calendars", {}).get(self.calendar_id, {}).get("busy", [])
+        current_start = existing.get("start", {}).get("dateTime")
+        current_end = existing.get("end", {}).get("dateTime")
+        current_interval = None
+        if current_start and current_end:
+            current_interval = (
+                datetime.fromisoformat(current_start.replace("Z", "+00:00")),
+                datetime.fromisoformat(current_end.replace("Z", "+00:00")),
+            )
+
+        for item in busy:
+            busy_start = datetime.fromisoformat(item["start"].replace("Z", "+00:00"))
+            busy_end = datetime.fromisoformat(item["end"].replace("Z", "+00:00"))
+            if current_interval and busy_start == current_interval[0] and busy_end == current_interval[1]:
+                continue
+            raise ValueError("O novo horário escolhido está indisponível.")
+
+        service.events().patch(
+            calendarId=self.calendar_id,
+            eventId=provider_event_id,
+            body={
+                "start": {"dateTime": new_start_at.isoformat(), "timeZone": settings.app_timezone},
+                "end": {"dateTime": new_end_at.isoformat(), "timeZone": settings.app_timezone},
+            },
+        ).execute()
+
     def _credentials(self) -> Credentials | None:
         token_path = Path(settings.google_token_path)
         if not token_path.exists():
