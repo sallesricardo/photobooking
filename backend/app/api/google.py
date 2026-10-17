@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from itsdangerous import BadSignature, URLSafeSerializer
 
+from app.api.auth import get_admin_username
 from app.core.config import settings
 from app.integrations.google.calendar import GoogleCalendarNotConfigured, GoogleCalendarProvider
 
@@ -10,13 +11,15 @@ serializer = URLSafeSerializer(settings.app_secret_key, salt="google-oauth")
 
 
 @router.get("/status")
-def google_status():
+def google_status(_username: str = Depends(get_admin_username)):
+
     provider = GoogleCalendarProvider()
     return {"connected": provider.is_authenticated(), "calendar_id": settings.google_calendar_id}
 
 
 @router.get("/authorize")
-def google_authorize():
+def google_authorize(_username: str = Depends(get_admin_username)):
+
     provider = GoogleCalendarProvider()
     state = serializer.dumps({"provider": "google-calendar"})
     try:

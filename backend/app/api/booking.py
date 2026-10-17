@@ -56,7 +56,6 @@ def availability(
     target_date: date,
     db: Session = Depends(get_database),
 ):
-    print("Get availability", session_slug, package_id, target_date)
     session = SessionRepository(db).get_active_by_slug(session_slug)
     if session is None:
         raise HTTPException(status_code=404, detail="Ensaio não encontrado.")

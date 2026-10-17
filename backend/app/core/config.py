@@ -8,6 +8,12 @@ class Settings(BaseSettings):
     app_secret_key: str = "change-me-in-production"
     whatsapp_phone: str = "5511999999999"
 
+    # Admin authentication (demo/portfolio). Use strong secrets in production.
+    admin_username: str = "admin"
+    admin_password: str = "change-me-admin"
+    admin_session_minutes: int = 60
+    admin_cookie_secure: bool = False
+
     google_client_id: str = ""
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/api/v1/google/callback"
