@@ -6,7 +6,7 @@ Projeto de portfólio inspirado em um sistema real de contratação de ensaios f
 
 - Next.js 14 + TypeScript + CSS Modules
 - FastAPI + Python
-- PostgreSQL + SQLAlchemy + Alembic
+- PostgreSQL or SQLite + SQLAlchemy + Alembic
 - Arquitetura com `CalendarProvider` para desacoplar o domínio do fornecedor de agenda
 - Google Calendar API com OAuth 2.0
 - Consulta de disponibilidade via FreeBusy
@@ -398,3 +398,29 @@ Não foi introduzido Celery/RQ/Redis artificialmente nesta etapa. O sistema atua
 - O token do Google está em volume persistente compartilhado pela instância atual; uma implantação multi-tenant deve migrar isso para armazenamento seguro por conta/tenant.
 - Backups precisam de retenção e armazenamento externo para serem realmente resilientes.
 - O Caddy resolve TLS, mas observabilidade de infraestrutura (Prometheus/Grafana, alertas) continua sendo responsabilidade do ambiente de deployment.
+
+## Banco de dados
+
+O mecanismo de persistência é configurável por `DATABASE_URL`. Exemplos:
+
+```env
+# PostgreSQL
+DATABASE_URL=postgresql+psycopg://photobooking:photobooking@localhost:5432/photobooking
+
+# SQLite
+DATABASE_URL=sqlite:///./data/photobooking.db
+```
+
+SQLAlchemy e Alembic usam a mesma camada de aplicação para as duas opções. O código habilita `foreign_keys` no SQLite e as migrations usam batch mode quando uma operação DDL não é suportada diretamente pelo SQLite.
+
+## Deploy no Render
+
+O repositório inclui `render.yaml` para criar os serviços de API e frontend. O serviço da API pode usar SQLite sem adicionar uma dependência externa:
+
+```env
+DATABASE_URL=sqlite:///./data/photobooking.db
+```
+
+O catálogo pode ser inicializado automaticamente com `RUN_SEED=true` e as migrations com `RUN_MIGRATIONS_ON_START=true`.
+
+O arquivo `deploy/render/README.md` contém o procedimento de publicação.

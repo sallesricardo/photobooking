@@ -23,7 +23,7 @@ class AuditRepository:
             entity_id=entity_id,
             actor=actor,
             request_id=request_id,
-            metadata=metadata or {},
+            details=metadata or {},
         )
         self.db.add(item)
         self.db.commit()

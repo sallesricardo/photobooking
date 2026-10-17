@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://photobooking:photobooking@localhost:5432/photobooking"
+    frontend_origin: str = "http://localhost:3000"
     app_timezone: str = "America/Sao_Paulo"
     calendar_provider: str = "mock"
     app_secret_key: str = "change-me-in-production"

@@ -1,0 +1,64 @@
+services:
+  - type: web
+    name: photobooking-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile.prod
+    dockerContext: ./backend
+    healthCheckPath: /health/ready
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:///./data/photobooking.db
+      - key: RUN_MIGRATIONS_ON_START
+        value: "true"
+      - key: RUN_SEED
+        value: "true"
+      - key: CALENDAR_PROVIDER
+        value: mock
+      - key: APP_TIMEZONE
+        value: America/Sao_Paulo
+      - key: APP_SECRET_KEY
+        generateValue: true
+      - key: WHATSAPP_PHONE
+        sync: false
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_SESSION_MINUTES
+        value: "60"
+      - key: ADMIN_COOKIE_SECURE
+        value: "true"
+      - key: RATE_LIMIT_ENABLED
+        value: "true"
+      - key: RATE_LIMIT_REQUESTS
+        value: "60"
+      - key: RATE_LIMIT_WINDOW_SECONDS
+        value: "60"
+      - key: FRONTEND_ORIGIN
+        value: https://photobooking-web.onrender.com
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        value: https://photobooking-api.onrender.com/api/v1/google/callback
+      - key: GOOGLE_CALENDAR_ID
+        value: primary
+      - key: GOOGLE_TOKEN_PATH
+        value: /app/data/google_token.json
+      - key: UVICORN_WORKERS
+        value: "1"
+
+  - type: web
+    name: photobooking-web
+    runtime: docker
+    plan: free
+    dockerfilePath: ./frontend/Dockerfile.prod
+    dockerContext: ./frontend
+    healthCheckPath: /
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://photobooking-api.onrender.com
+      - key: BACKEND_URL
+        value: https://photobooking-api.onrender.com
