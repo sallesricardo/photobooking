@@ -8,7 +8,12 @@ from app.api.auth import get_admin_username
 from app.api.dependencies import get_database
 from app.core.config import settings
 from app.domain.agenda import MockAgendaProvider
-from app.integrations.google.calendar import GoogleCalendarNotConfigured, GoogleCalendarProvider
+from app.integrations.google.calendar import (
+    GoogleCalendarNotConfigured,
+    GoogleCalendarOperationError,
+    GoogleCalendarProvider,
+    GoogleCalendarUnavailable,
+)
 from app.repositories.booking import BookingRepository
 
 router = APIRouter(prefix="/admin/bookings", tags=["admin-bookings"])
@@ -77,6 +82,10 @@ def cancel_booking(booking_id: int, _username: str = Depends(get_admin_username)
             _provider().cancel_booking(provider_event_id=booking.provider_event_id)
         except GoogleCalendarNotConfigured as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except GoogleCalendarUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except GoogleCalendarOperationError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=502, detail="Não foi possível cancelar o evento na agenda.") from exc
 
@@ -127,6 +136,10 @@ def reschedule_booking(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except GoogleCalendarNotConfigured as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except GoogleCalendarUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except GoogleCalendarOperationError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=502, detail="Não foi possível reagendar o evento na agenda.") from exc
 

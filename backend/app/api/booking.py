@@ -10,7 +10,12 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_database
 from app.core.config import settings
 from app.domain.agenda import MockAgendaProvider
-from app.integrations.google.calendar import GoogleCalendarNotConfigured, GoogleCalendarProvider
+from app.integrations.google.calendar import (
+    GoogleCalendarNotConfigured,
+    GoogleCalendarOperationError,
+    GoogleCalendarProvider,
+    GoogleCalendarUnavailable,
+)
 from app.models.booking import Booking
 from app.repositories.booking import BookingRepository
 from app.repositories.session import SessionRepository
@@ -132,9 +137,14 @@ def create_whatsapp_booking(
                 duration_minutes=package.duration_minutes,
                 title=f"{session.name} - {package.name}",
                 description=f"Ensaio: {session.name}\nPacote: {package.name}\nValor: R$ {package.price:.2f}",
+                idempotency_key=key,
             )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except GoogleCalendarUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except GoogleCalendarOperationError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=502, detail="Não foi possível criar o evento no Google Calendar.") from exc
 

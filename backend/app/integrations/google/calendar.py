@@ -20,6 +20,17 @@ class GoogleCalendarNotConfigured(RuntimeError):
     pass
 
 
+class GoogleCalendarUnavailable(RuntimeError):
+    """Temporary Google API failure; the operation may succeed on retry."""
+
+
+class GoogleCalendarOperationError(RuntimeError):
+    """Non-retryable Google Calendar API failure."""
+
+
+_TRANSIENT_HTTP_STATUSES = {429, 500, 502, 503, 504}
+
+
 class GoogleCalendarProvider:
     """Google Calendar adapter used by the application service layer."""
 
@@ -67,8 +78,8 @@ class GoogleCalendarProvider:
         duration = timedelta(minutes=duration_minutes)
         step = timedelta(minutes=slot_interval_minutes)
 
-        response = (
-            service.freebusy()
+        response = self._execute_with_retry(
+            lambda: service.freebusy()
             .query(
                 body={
                     "timeMin": opening.isoformat(),
@@ -107,15 +118,26 @@ class GoogleCalendarProvider:
         duration_minutes: int,
         title: str,
         description: str,
+        idempotency_key: str | None = None,
     ) -> str:
         service = self._service()
         start_at = self._normalize_datetime(start_at)
         end_at = start_at + timedelta(minutes=duration_minutes)
 
+        # If a previous request created the external event but failed before
+        # committing PostgreSQL, the same idempotency key lets a retry recover
+        # the existing Google event instead of creating a duplicate.
+        if idempotency_key:
+            existing_id = self._find_event_by_idempotency_key(service, idempotency_key)
+            if existing_id:
+                return existing_id
+
         # Recheck immediately before insertion to reduce the chance of a race
-        # between availability lookup and booking creation.
-        response = (
-            service.freebusy()
+        # between availability lookup and booking creation. This read is safe
+        # to retry; the subsequent POST is intentionally not retried because it
+        # is a non-idempotent external operation.
+        response = self._execute_with_retry(
+            lambda: service.freebusy()
             .query(
                 body={
                     "timeMin": start_at.isoformat(),
@@ -136,7 +158,15 @@ class GoogleCalendarProvider:
             "start": {"dateTime": start_at.isoformat(), "timeZone": settings.app_timezone},
             "end": {"dateTime": end_at.isoformat(), "timeZone": settings.app_timezone},
         }
-        created = service.events().insert(calendarId=self.calendar_id, body=event).execute()
+        if idempotency_key:
+            event["extendedProperties"] = {
+                "private": {"photobooking_idempotency_key": idempotency_key}
+            }
+
+        try:
+            created = service.events().insert(calendarId=self.calendar_id, body=event).execute()
+        except HttpError as exc:
+            self._raise_google_error(exc)
         return created["id"]
 
     def cancel_booking(self, *, provider_event_id: str) -> None:
@@ -149,7 +179,7 @@ class GoogleCalendarProvider:
         except HttpError as exc:
             if getattr(exc, "resp", None) is not None and exc.resp.status == 404:
                 return
-            raise
+            self._raise_google_error(exc)
 
     def reschedule_booking(
         self,
@@ -167,8 +197,8 @@ class GoogleCalendarProvider:
             eventId=provider_event_id,
         ).execute()
 
-        response = (
-            service.freebusy()
+        response = self._execute_with_retry(
+            lambda: service.freebusy()
             .query(
                 body={
                     "timeMin": new_start_at.isoformat(),
@@ -205,6 +235,52 @@ class GoogleCalendarProvider:
                 "end": {"dateTime": new_end_at.isoformat(), "timeZone": settings.app_timezone},
             },
         ).execute()
+
+    def _find_event_by_idempotency_key(self, service: Resource, key: str) -> str | None:
+        try:
+            response = self._execute_with_retry(
+                lambda: service.events()
+                .list(
+                    calendarId=self.calendar_id,
+                    privateExtendedProperty=[f"photobooking_idempotency_key={key}"],
+                    showDeleted=False,
+                    maxResults=10,
+                )
+                .execute()
+            )
+        except GoogleCalendarUnavailable:
+            raise
+
+        for item in response.get("items", []):
+            event_id = item.get("id")
+            if event_id:
+                return event_id
+        return None
+
+    def _execute_with_retry(self, operation, *, attempts: int = 3):
+        import time
+
+        for attempt in range(attempts):
+            try:
+                return operation()
+            except HttpError as exc:
+                status = getattr(getattr(exc, "resp", None), "status", None)
+                if status not in _TRANSIENT_HTTP_STATUSES or attempt == attempts - 1:
+                    self._raise_google_error(exc)
+                time.sleep(0.2 * (2**attempt))
+
+        raise AssertionError("unreachable")
+
+    @staticmethod
+    def _raise_google_error(exc: HttpError) -> None:
+        status = getattr(getattr(exc, "resp", None), "status", None)
+        if status in _TRANSIENT_HTTP_STATUSES:
+            raise GoogleCalendarUnavailable(
+                "O Google Calendar está temporariamente indisponível. Tente novamente."
+            ) from exc
+        raise GoogleCalendarOperationError(
+            "O Google Calendar recusou a operação solicitada."
+        ) from exc
 
     def _credentials(self) -> Credentials | None:
         token_path = Path(settings.google_token_path)

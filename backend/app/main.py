@@ -9,7 +9,7 @@ from app.api.sessions import router as sessions_router
 
 app = FastAPI(
     title="PhotoBooking API",
-    version="0.4.0",
+    version="0.5.0",
     description="API demonstrativa para catálogo e agendamento de ensaios fotográficos.",
 )
 

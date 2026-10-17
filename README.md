@@ -224,3 +224,13 @@ Endpoints administrativos:
 - `POST /api/v1/admin/bookings/{id}/reschedule`
 
 Migration: `0003_booking_lifecycle`.
+
+## M9 — Resiliência e falhas
+
+A integração com o Google Calendar foi preparada para cenários de falha: consultas de disponibilidade são retryable em erros transitórios (HTTP 429/5xx), enquanto a criação de eventos não é repetida automaticamente por ser uma operação externa não-idempotente.
+
+Para evitar duplicação quando uma criação externa succeeds mas o commit local falha, o evento recebe `photobooking_idempotency_key` em `extendedProperties.private`. Uma nova tentativa com a mesma chave procura primeiro o evento existente e o recupera.
+
+Também foram adicionados testes unitários para recuperação idempotente, retry de `freebusy` e garantia de que `events.insert` não é repetido automaticamente.
+
+Em produção, o próximo passo seria adicionar observabilidade (logs estruturados, correlation/request ID e métricas) e uma fila/outbox para coordenar de forma ainda mais robusta o PostgreSQL e o Google Calendar.
