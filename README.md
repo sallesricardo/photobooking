@@ -307,3 +307,94 @@ O rate limiter atual é propositalmente simples: funciona dentro de um único pr
 As métricas evitam usar IDs numéricos/UUIDs diretamente como labels para reduzir cardinalidade. O endpoint `/metrics` deve ficar acessível apenas para o sistema de monitoramento, normalmente por rede privada ou reverse proxy.
 
 A auditoria é best-effort: uma falha ao gravar o log é registrada, mas não derruba uma operação de negócio já concluída. Para requisitos regulatórios mais rígidos, o próximo passo seria um mecanismo transacional/outbox.
+
+## M12 — Deployment de produção
+
+O projeto agora possui uma trilha de deployment separada da stack de desenvolvimento.
+
+### Arquitetura de produção
+
+```text
+Internet
+   |
+ HTTPS :443
+   v
+ Caddy
+   |
+   +---- /api/* ------> FastAPI :8000 ----> PostgreSQL :5432
+   |
+   +---- / ------------> Next.js :3000
+```
+
+Componentes:
+
+- **Caddy** como reverse proxy e terminador TLS, com HTTPS automático para um domínio público.
+- **FastAPI** executando sem `--reload`, com múltiplos workers Uvicorn configuráveis.
+- **Next.js** em imagem standalone de produção.
+- **PostgreSQL 16** com volume persistente.
+- **Alembic** executado por um serviço de migration antes do backend.
+- volumes persistentes para PostgreSQL, token OAuth do Google e estado do Caddy.
+- headers HTTP básicos de segurança no reverse proxy.
+
+### Subindo em um servidor
+
+1. Instale Docker Engine + Compose plugin.
+2. Aponte o DNS do domínio para o servidor.
+3. Copie `.env.prod.example` para `.env.prod` e preencha os secrets.
+4. Gere valores fortes para `POSTGRES_PASSWORD`, `APP_SECRET_KEY` e `ADMIN_PASSWORD`.
+5. Ajuste `APP_DOMAIN`, `PUBLIC_APP_URL` e `GOOGLE_REDIRECT_URI`.
+6. Execute:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+```
+
+O serviço `migrate` executa `alembic upgrade head` antes do backend iniciar.
+
+Para acompanhar o deployment:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f backend
+```
+
+### HTTPS
+
+O Caddy solicita e renova automaticamente certificados TLS para `APP_DOMAIN`. As portas 80 e 443 precisam estar acessíveis externamente para o fluxo normal de emissão/renovação.
+
+O endpoint `/metrics` não é publicado pelo Caddy em produção. Métricas devem ser coletadas por rede interna ou por um monitoramento que tenha acesso direto ao serviço backend.
+
+### Backup PostgreSQL
+
+Foi adicionado `scripts/backup_postgres.sh`:
+
+```bash
+set -a; . ./.env.prod; set +a
+./scripts/backup_postgres.sh
+```
+
+O resultado é um arquivo `backups/photobooking-<timestamp>.sql.gz`.
+
+Para restauração:
+
+```bash
+set -a; . ./.env.prod; set +a
+./scripts/restore_postgres.sh backups/photobooking-YYYYMMDDTHHMMSSZ.sql.gz
+```
+
+A rotina de backup deve ser agendada externamente, por exemplo via `cron`, e os arquivos devem ser copiados para armazenamento externo. Backup local no mesmo disco do PostgreSQL não é uma estratégia suficiente contra perda do servidor.
+
+### Secrets
+
+`.env.prod` não deve ser versionado. O arquivo de exemplo contém apenas placeholders. Em um ambiente com secret manager, os mesmos valores podem ser injetados como variáveis de ambiente no deployment.
+
+### Worker / jobs assíncronos
+
+Não foi introduzido Celery/RQ/Redis artificialmente nesta etapa. O sistema atual não possui jobs assíncronos que justifiquem essa infraestrutura. Quando surgirem tarefas como envio de notificações, geração de galerias ou sincronizações periódicas, a arquitetura pode evoluir para uma fila + worker sem alterar o fluxo HTTP principal.
+
+### Limitações conhecidas
+
+- O rate limiter do M11 continua sendo local ao processo; múltiplas réplicas exigem Redis.
+- O token do Google está em volume persistente compartilhado pela instância atual; uma implantação multi-tenant deve migrar isso para armazenamento seguro por conta/tenant.
+- Backups precisam de retenção e armazenamento externo para serem realmente resilientes.
+- O Caddy resolve TLS, mas observabilidade de infraestrutura (Prometheus/Grafana, alertas) continua sendo responsabilidade do ambiente de deployment.

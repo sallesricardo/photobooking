@@ -1,0 +1,97 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    restart: "no"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      RUN_MIGRATIONS_ONLY: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [internal]
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      CALENDAR_PROVIDER: ${CALENDAR_PROVIDER:-mock}
+      APP_TIMEZONE: ${APP_TIMEZONE:-America/Sao_Paulo}
+      APP_SECRET_KEY: ${APP_SECRET_KEY}
+      WHATSAPP_PHONE: ${WHATSAPP_PHONE}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_SESSION_MINUTES: ${ADMIN_SESSION_MINUTES:-60}
+      ADMIN_COOKIE_SECURE: "true"
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      RATE_LIMIT_REQUESTS: ${RATE_LIMIT_REQUESTS:-60}
+      RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI}
+      GOOGLE_CALENDAR_ID: ${GOOGLE_CALENDAR_ID:-primary}
+      GOOGLE_TOKEN_PATH: /app/data/google_token.json
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
+      RUN_MIGRATIONS_ONLY: "false"
+    volumes:
+      - google_token:/app/data
+    expose: ["8000"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [internal]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_APP_URL}
+    restart: unless-stopped
+    expose: ["3000"]
+    depends_on: [backend]
+    networks: [internal]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [frontend, backend]
+    networks: [internal]
+
+volumes:
+  postgres_data:
+  google_token:
+  caddy_data:
+  caddy_config:
+
+networks:
+  internal:
