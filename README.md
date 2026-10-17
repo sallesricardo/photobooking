@@ -234,3 +234,50 @@ Para evitar duplicação quando uma criação externa succeeds mas o commit loca
 Também foram adicionados testes unitários para recuperação idempotente, retry de `freebusy` e garantia de que `events.insert` não é repetido automaticamente.
 
 Em produção, o próximo passo seria adicionar observabilidade (logs estruturados, correlation/request ID e métricas) e uma fila/outbox para coordenar de forma ainda mais robusta o PostgreSQL e o Google Calendar.
+
+## M9 — Resiliência e idempotência externa
+
+A integração com Google Calendar agora trata falhas transitórias com retry para operações seguras de leitura. A criação de evento não é repetida cegamente: o `Idempotency-Key` é gravado em `extendedProperties.private` do evento e pode ser usado para recuperar um evento criado antes de uma falha de rede. Erros do provider são traduzidos para respostas HTTP 502/503.
+
+## M10 — Observabilidade e readiness
+
+A API agora possui uma camada mínima de observabilidade adequada para um serviço de portfólio/produção inicial:
+
+- `X-Request-ID` aceito ou gerado automaticamente em cada requisição HTTP;
+- `X-Request-ID` devolvido na resposta para correlação com logs;
+- logs estruturados em JSON com timestamp, nível, logger e request ID;
+- handler global para exceções inesperadas, sem expor stack trace ao cliente;
+- handler explícito para erros de validação;
+- `/health/live` para liveness;
+- `/health/ready` para readiness, validando conexão com PostgreSQL;
+- logs de criação, idempotência, cancelamento e reagendamento de reservas;
+- testes unitários do request ID;
+- teste de integração PostgreSQL separado e executado somente quando `TEST_DATABASE_URL` estiver configurado.
+
+### Testes de integração
+
+Os testes normais continuam independentes de infraestrutura externa:
+
+```bash
+cd backend
+pytest
+```
+
+Para executar o teste real contra PostgreSQL:
+
+```bash
+export TEST_DATABASE_URL='postgresql+psycopg://photobooking:photobooking@localhost:5432/photobooking'
+pytest -m integration
+```
+
+O teste de integração não cria nem destrói o banco; ele espera que o ambiente já esteja disponível e verifica a conectividade através do endpoint de readiness.
+
+### Próximos passos de produção
+
+- métricas (latência, taxa de erro e contadores de bookings);
+- tracing distribuído, se o sistema ganhar workers/filas;
+- outbox/worker para desacoplar transações locais de chamadas externas;
+- rate limiting;
+- usuários administrativos persistidos, Argon2 e RBAC;
+- auditoria de alterações;
+- OAuth Google por tenant.

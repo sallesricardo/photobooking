@@ -3,6 +3,9 @@ from decimal import Decimal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+import logging
+
+from app.core.logging import request_id_ctx
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -23,6 +26,7 @@ from app.services.agenda import AgendaService
 from app.services.whatsapp import WhatsAppService
 
 router = APIRouter(prefix="/booking", tags=["booking"])
+logger = logging.getLogger(__name__)
 
 
 class AvailabilityResponse(BaseModel):
@@ -107,9 +111,11 @@ def create_whatsapp_booking(
     db: Session = Depends(get_database),
 ):
     key = idempotency_key or str(uuid4())
+    logger.info("booking_create_started session=%s package_id=%s idempotency_key=%s", request.session_slug, request.package_id, key)
     repository = BookingRepository(db)
     existing = repository.find_by_idempotency_key(key)
     if existing:
+        logger.info("booking_idempotency_hit booking_id=%s", existing.id)
         return _build_response(existing)
 
     session = SessionRepository(db).get_active_by_slug(request.session_slug)
@@ -182,4 +188,5 @@ def create_whatsapp_booking(
             except Exception:
                 pass
         raise HTTPException(status_code=500, detail="Não foi possível registrar a reserva.")
+    logger.info("booking_created booking_id=%s provider=%s request_id=%s", created.id, created.provider, request_id_ctx.get())
     return _build_response(created)

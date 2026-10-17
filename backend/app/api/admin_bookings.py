@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -17,6 +18,7 @@ from app.integrations.google.calendar import (
 from app.repositories.booking import BookingRepository
 
 router = APIRouter(prefix="/admin/bookings", tags=["admin-bookings"])
+logger = logging.getLogger(__name__)
 
 
 class AdminBookingResponse(BaseModel):
@@ -90,6 +92,7 @@ def cancel_booking(booking_id: int, _username: str = Depends(get_admin_username)
             raise HTTPException(status_code=502, detail="Não foi possível cancelar o evento na agenda.") from exc
 
     booking.status = "canceled"
+    logger.info("booking_canceled booking_id=%s", booking.id)
     db.commit()
     db.refresh(booking)
     return _serialize(booking)
@@ -145,6 +148,7 @@ def reschedule_booking(
 
     from datetime import timedelta
     booking.start_at = request.start_at
+    logger.info("booking_rescheduled booking_id=%s new_start_at=%s", booking.id, request.start_at.isoformat())
     booking.end_at = request.start_at + timedelta(minutes=booking.package.duration_minutes)
     db.commit()
     db.refresh(booking)
