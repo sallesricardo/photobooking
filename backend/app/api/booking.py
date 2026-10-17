@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,6 +10,8 @@ from app.core.config import settings
 from app.domain.agenda import MockAgendaProvider
 from app.integrations.google.calendar import GoogleCalendarNotConfigured, GoogleCalendarProvider
 from app.repositories.session import SessionRepository
+from app.repositories.booking import BookingRepository
+from app.models.booking import Booking
 from app.services.agenda import AgendaService
 from app.services.whatsapp import WhatsAppService
 
@@ -137,6 +139,26 @@ def create_whatsapp_booking(
         price=package.price,
         start_at=request.start_at,
     )
+
+    booking = Booking(
+        session_id=session.id,
+        package_id=package.id,
+        start_at=request.start_at,
+        end_at=request.start_at + timedelta(minutes=package.duration_minutes),
+        provider=_provider_name(),
+        provider_event_id=event_id,
+        status="confirmed",
+        whatsapp_url=whatsapp.build_url(message),
+    )
+    try:
+        BookingRepository(db).create(booking)
+    except Exception:
+        db.rollback()
+        if event_id and settings.calendar_provider == "google":
+            # The external event remains the source of truth; avoid returning
+            # a false booking confirmation if local persistence failed.
+            raise HTTPException(status_code=500, detail="O evento foi criado, mas não foi possível registrar a reserva localmente.")
+        raise
 
     return BookingResponse(
         session=session.name,

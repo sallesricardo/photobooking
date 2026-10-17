@@ -9,6 +9,7 @@ __pycache__/
 node_modules/
 .next/
 out/
+tsconfig.tsbuildinfo
 
 # IDE
 .vscode/
@@ -19,3 +20,4 @@ out/
 
 # Docker
 postgres_data/
+tmp/
