@@ -1,67 +1,103 @@
-# PhotoBooking — M4 Google Calendar
+# PhotoBooking — M5 Portfolio
 
-M4 substitui a agenda fake por um adapter real para o Google Calendar, mantendo o `MockAgendaProvider` para demonstração local.
+Projeto de portfólio inspirado em um sistema real de contratação de ensaios fotográficos.
+
+## O que o projeto demonstra
+
+- Next.js 14 + TypeScript + CSS Modules
+- FastAPI + Python
+- PostgreSQL + SQLAlchemy + Alembic
+- Arquitetura com `CalendarProvider` para desacoplar o domínio do fornecedor de agenda
+- Google Calendar API com OAuth 2.0
+- Consulta de disponibilidade via FreeBusy
+- Criação de eventos no calendário
+- Validação de disponibilidade novamente antes do booking
+- Geração de mensagem e link de WhatsApp
+- Painel demonstrativo para estado da integração
+- Testes automatizados do adapter e serviço de WhatsApp
+- Docker Compose para ambiente local
+
+## Fluxo principal
+
+```text
+Landing page
+    ↓
+Ensaio → Pacote
+    ↓
+Data
+    ↓
+FastAPI → CalendarProvider → Google Calendar
+    ↓
+Horários disponíveis
+    ↓
+Cliente escolhe horário
+    ↓
+FastAPI valida novamente
+    ↓
+Cria evento no Google Calendar
+    ↓
+Gera mensagem
+    ↓
+WhatsApp
+```
 
 ## Arquitetura
 
 ```text
-Next.js
-   |
-   v
-FastAPI
-   |
-   +--> BookingService / AgendaService
-             |
-             v
-       CalendarProvider
-          /        \
-         /          \
-      Mock        GoogleCalendar
-                    |
-                    v
-              Google Calendar API
+                         ┌──────────────────┐
+                         │     Next.js      │
+                         └────────┬─────────┘
+                                  │ HTTP
+                         ┌────────▼─────────┐
+                         │     FastAPI      │
+                         └────────┬─────────┘
+                                  │
+                         ┌────────▼─────────┐
+                         │  AgendaService   │
+                         └────────┬─────────┘
+                                  │ Protocol
+                    ┌─────────────┴─────────────┐
+                    │                           │
+             ┌──────▼──────┐            ┌──────▼──────────┐
+             │ MockAgenda  │            │ GoogleCalendar  │
+             └─────────────┘            └──────┬──────────┘
+                                                │
+                                         Google Calendar
 ```
 
-A integração usa OAuth 2.0 no backend. O Google recomenda o fluxo OAuth para aplicações web server-side e a API oferece operações de free/busy e criação de eventos. Veja a documentação oficial do [Google Calendar API](https://developers.google.com/workspace/calendar/api/quickstart/python) e do [OAuth 2.0 para aplicações web](https://developers.google.com/identity/protocols/oauth2/web-server).
+## Executando
 
-## Fluxo
+```bash
+docker compose up --build
+```
 
-1. Cliente escolhe ensaio e pacote.
-2. Frontend consulta `/api/v1/booking/availability`.
-3. `CalendarProvider` consulta a agenda configurada.
-4. Cliente escolhe um horário.
-5. Backend consulta novamente a disponibilidade.
-6. Com `CALENDAR_PROVIDER=google`, o backend faz uma segunda verificação de free/busy imediatamente antes de criar o evento.
-7. O evento é criado no Google Calendar.
-8. O backend gera a mensagem e a URL do WhatsApp.
+Frontend: `http://localhost:3000`
 
-## Desenvolvimento sem Google
+API: `http://localhost:8000`
 
-Por padrão:
+Swagger: `http://localhost:8000/docs`
 
-```text
+Painel demonstrativo: `http://localhost:3000/admin`
+
+## Mock Calendar
+
+Para desenvolvimento local sem credenciais Google:
+
+```env
 CALENDAR_PROVIDER=mock
 ```
 
-Assim o projeto continua funcionando sem credenciais externas.
-
-## Ativando Google Calendar
+## Google Calendar
 
 No Google Cloud:
 
 1. Crie um projeto.
 2. Ative a Google Calendar API.
 3. Configure a tela de consentimento OAuth.
-4. Crie um OAuth Client para aplicação Web.
-5. Adicione este redirect URI:
+4. Crie credenciais OAuth para aplicação Web.
+5. Cadastre o redirect URI `http://localhost:8000/api/v1/google/callback`.
 
-```text
-http://localhost:8000/api/v1/google/callback
-```
-
-O quickstart oficial do Google documenta a criação das credenciais e a ativação da API.
-
-Configure no `.env`:
+No `.env`:
 
 ```env
 CALENDAR_PROVIDER=google
@@ -69,34 +105,41 @@ GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_REDIRECT_URI=http://localhost:8000/api/v1/google/callback
 GOOGLE_CALENDAR_ID=primary
-APP_SECRET_KEY=uma-chave-aleatoria
+APP_SECRET_KEY=...
 ```
 
-Suba o projeto e abra:
+Depois, acesse `/api/v1/google/authorize` ou use o botão no painel `/admin`.
 
-```text
-http://localhost:8000/api/v1/google/authorize
+## Testes
+
+```bash
+cd backend
+pip install -r requirements.txt
+pytest
 ```
 
-Depois da autorização, o backend salva o token em `/app/data/google_token.json`. O Docker Compose usa um volume separado para esse arquivo.
+Os testes cobrem a geração do link/mensagem de WhatsApp e a transformação de respostas FreeBusy em slots.
 
-## Escopos usados
+## Endpoints principais
 
-- `calendar.events`: acesso para criar e editar eventos.
-- `calendar.freebusy`: consulta de disponibilidade.
+| Método | Endpoint | Finalidade |
+|---|---|---|
+| GET | `/api/v1/sessions` | Lista ensaios |
+| GET | `/api/v1/sessions/{slug}` | Detalhes do ensaio |
+| GET | `/api/v1/booking/availability` | Consulta horários |
+| POST | `/api/v1/booking/whatsapp` | Valida, cria evento e gera WhatsApp |
+| GET | `/api/v1/google/status` | Estado da integração |
+| GET | `/api/v1/google/authorize` | Inicia OAuth |
+| GET | `/api/v1/google/callback` | Finaliza OAuth |
 
-Esses são escopos oficiais da API Google Calendar.
+## Próxima evolução para produção
 
-## Limitações desta milestone
-
-Para manter o projeto adequado a um portfólio, esta primeira integração usa um único calendário e armazena o refresh token em um volume do backend.
-
-Em uma versão de produção multi-cliente, o próximo passo seria:
-
-- tabela de credenciais OAuth por fotógrafo/tenant;
+- autenticação de clientes e fotógrafos;
+- OAuth por tenant, em vez de um token global;
 - criptografia dos refresh tokens;
-- múltiplos calendários;
-- idempotência de booking;
+- idempotência de reservas;
+- persistência própria dos bookings;
 - auditoria;
-- tratamento específico de revogação de tokens;
-- testes de integração com Google.
+- múltiplos calendários;
+- testes de integração com Google;
+- observabilidade e rate limiting.

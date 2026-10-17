@@ -119,8 +119,8 @@ export default function BookingClient() {
           />
 
           <h2>Horários disponíveis</h2>
-          {loading && <p>Consultando agenda...</p>}
-          {!loading && date && slots.length === 0 && <p>Nenhum horário disponível nesta data.</p>}
+          {loading && <p className={styles.status}>Consultando agenda...</p>}
+          {!loading && date && slots.length === 0 && <p className={styles.status}>Nenhum horário disponível nesta data.</p>}
           <div className={styles.slots}>
             {slots.map((slot) => (
               <button
