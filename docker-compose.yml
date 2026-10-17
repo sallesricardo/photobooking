@@ -21,11 +21,21 @@ services:
       context: ./backend
     container_name: photobooking-backend
     environment:
-      DATABASE_URL: postgresql+psycopg://photobooking:photobooking@db:5432/photobooking
-    ports:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://photobooking:photobooking@db:5432/photobooking}
+      CALENDAR_PROVIDER: ${CALENDAR_PROVIDER:-mock}
+      APP_TIMEZONE: ${APP_TIMEZONE:-America/Sao_Paulo}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-change-me-in-production}
+      WHATSAPP_PHONE: ${WHATSAPP_PHONE:-5511999999999}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:8000/api/v1/google/callback}
+      GOOGLE_CALENDAR_ID: ${GOOGLE_CALENDAR_ID:-primary}
+      GOOGLE_TOKEN_PATH: ${GOOGLE_TOKEN_PATH:-/app/data/google_token.json}
+    ports: 
       - "8000:8000"
     volumes:
-      - ./backend:/app
+      - "./backend:/app"
+      - "google_token:/app/data"
     depends_on:
       db:
         condition: service_healthy
@@ -35,7 +45,7 @@ services:
       context: ./frontend
     container_name: photobooking-frontend
     environment:
-      NEXT_PUBLIC_API_URL: http://backend:8000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:8000}
     ports:
       - "3000:3000"
     volumes:
@@ -47,3 +57,4 @@ services:
 
 volumes:
   postgres_data:
+  google_token:

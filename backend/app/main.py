@@ -1,13 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.sessions import router as sessions_router
-from app.api.booking import router as booking_router
 
+from app.api.booking import router as booking_router
+from app.api.google import router as google_router
+from app.api.sessions import router as sessions_router
 
 app = FastAPI(
     title="PhotoBooking API",
-    version="0.2.0",
-    description="API demonstrativa para catálogo e agendamento de ensaios fotográficos."
+    version="0.3.0",
+    description="API demonstrativa para catálogo e agendamento de ensaios fotográficos.",
 )
 
 # origins = ["http://localhost:3000"]
@@ -23,6 +24,7 @@ app.add_middleware(
 
 app.include_router(sessions_router, prefix="/api/v1")
 app.include_router(booking_router, prefix="/api/v1")
+app.include_router(google_router, prefix="/api/v1")
 
 
 @app.get("/health")
