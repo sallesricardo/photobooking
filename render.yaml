@@ -7,6 +7,8 @@ services:
     dockerContext: ./backend
     healthCheckPath: /health/ready
     envVars:
+      - key: ENV
+        value: demo
       - key: DATABASE_URL
         value: sqlite:///./data/photobooking.db
       - key: RUN_MIGRATIONS_ON_START
@@ -58,6 +60,8 @@ services:
     dockerContext: ./frontend
     healthCheckPath: /
     envVars:
+      - key: ENV
+        value: demo
       - key: NEXT_PUBLIC_API_URL
         value: https://photobooking-api.onrender.com
       - key: BACKEND_URL

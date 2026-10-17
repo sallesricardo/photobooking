@@ -86,6 +86,12 @@ A autenticação usa uma sessão assinada em cookie `HttpOnly`, com expiração 
                              Google Calendar PostgreSQL
 ```
 
+## Ambiente de demonstração
+
+Quando `ENV=demo`, o frontend exibe um banner no topo informando que esta é uma demonstração e que os dados cadastrados não são persistentes.
+
+O valor pode ser alterado por ambiente: por exemplo, `ENV=development` localmente e `ENV=production` em uma instalação persistente.
+
 ## Executando
 
 ```bash

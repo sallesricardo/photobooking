@@ -14,3 +14,31 @@ body {
     background: #faf9f7;
     color: #1f1f1f
 }
+
+.demoBanner {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1rem;
+    background: #fff3cd;
+    color: #664d03;
+    border-bottom: 1px solid #ffecb5;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    text-align: center;
+}
+
+.demoBanner strong {
+    white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+    .demoBanner {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0.15rem;
+        text-align: left;
+    }
+}

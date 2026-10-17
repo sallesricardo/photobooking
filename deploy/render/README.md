@@ -18,6 +18,8 @@ The database engine is selected exclusively by `DATABASE_URL`. PostgreSQL remain
 
 The API runs Alembic migrations and the catalog seed at startup. `CALENDAR_PROVIDER=mock` keeps the demo independent of Google credentials. Set it to `google` and provide the OAuth variables when a real Calendar integration is desired.
 
+The Blueprint sets `ENV=demo` on both services. The Next.js frontend uses this flag to display the non-persistence demonstration banner.
+
 ## Important free-tier behavior
 
 Render Free Web Services spin down after 15 minutes without inbound traffic. They take about a minute to start again. Their local filesystem is ephemeral, so the SQLite file can be lost after a restart, redeploy, or spin-down.
