@@ -1,6 +1,6 @@
-# PhotoBooking — M7 Admin & Reservations
+# PhotoBooking
 
-Projeto de portfólio inspirado em um sistema real de contratação de ensaios fotográficos.
+Projeto de portfólio de um sistema real de contratação de ensaios fotográficos.
 
 ## O que o projeto demonstra
 
@@ -64,26 +64,66 @@ A autenticação usa uma sessão assinada em cookie `HttpOnly`, com expiração 
 
 ```text
                          ┌──────────────────┐
-                         │     Next.js      │
-                         └────────┬─────────┘
-                                  │ HTTP
+   Navegador  ──────────► │     Next.js      │
+   (mesma origem)         └────────┬─────────┘
+                                  │ BFF: /api/v1/* (server-side)
                          ┌────────▼─────────┐
                          │     FastAPI      │
-                         └──────┬─────┬─────┘
-                                │     │
-                   ┌────────────▼─┐ ┌─▼────────────────┐
+                         └──────┬──────┬────┘
+                                │      │
+                   ┌────────────▼──┐ ┌─▼────────────────┐
                    │ BookingService│ │ Admin API        │
-                   └──────┬───────┘ └───────┬───────────┘
+                   └──────┬────────┘ └───────┬──────────┘
                           │                  │
-                  ┌───────▼────────┐   ┌────▼──────────┐
+                  ┌───────▼────────┐   ┌─────▼───────────┐
                   │CalendarProvider│   │BookingRepository│
-                  └───────┬────────┘   └────┬───────────┘
-                    ┌─────┴─────┐            │
-             ┌──────▼─────┐ ┌──▼─────────┐  │
-             │ MockAgenda │ │GoogleCalendar│ │
-             └────────────┘ └──────┬──────┘ │
-                                   │         │
-                             Google Calendar PostgreSQL
+                  └───────┬────────┘   └──────┬──────────┘
+                    ┌─────┴────┐              │
+             ┌──────▼─────┐ ┌──▼───────────┐  │
+             │ MockAgenda │ │GoogleCalendar│  │
+             └────────────┘ └──────┬───────┘  │
+                                   │          │
+                           Google Calendar   PostgreSQL
+```
+
+## BFF (Backend for Frontend)
+
+O frontend expõe um proxy em `frontend/app/api/v1/[...path]/route.ts`. O
+navegador chama apenas rotas da própria origem (`/api/v1/...`); o Next.js
+repassa a requisição ao FastAPI no servidor.
+
+Benefícios:
+
+- **Nenhuma URL de backend no bundle do navegador** — a API não é exposta ao
+  cliente e o CORS deixa de ser necessário.
+- **Sessão same-origin** — o cookie `HttpOnly` do admin pertence ao frontend,
+  que o repassa ao backend. Sem `SameSite`/`Secure` frágeis entre domínios.
+- **URL do backend resolvida em runtime** — `BACKEND_URL` (não `NEXT_PUBLIC_*`)
+  permite trocar de ambiente sem reconstruir a imagem do frontend.
+- **Redirecionamentos preservados** — o `Location` do OAuth do Google chega
+  intacto ao navegador.
+
+```env
+# Variável server-side, lida em runtime pelo proxy.
+BACKEND_URL=http://backend:8000
+```
+
+O proxy repassa método, corpo, cookies e cabeçalhos (`X-Forwarded-For`,
+`Idempotency-Key`), preserva o status e o corpo da resposta, e devolve `502`
+quando o backend está indisponível. A lógica de negócio permanece
+exclusivamente no FastAPI.
+
+Os componentes `"use client"` usam o helper `frontend/lib/api.ts`:
+
+```ts
+import { apiFetch } from "@/lib/api";
+
+const data = await apiFetch<Booking[]>("admin/bookings");
+const created = await apiFetch("booking/whatsapp", {
+  method: "POST",
+  idempotencyKey: key,
+  body: { session_slug, package_id, start_at },
+});
 ```
 
 ## Ambiente de demonstração
@@ -106,11 +146,8 @@ docker compose exec backend python -m app.db.seed
 ```
 
 Frontend: `http://localhost:3000`
-
 API: `http://localhost:8000`
-
 Swagger: `http://localhost:8000/docs`
-
 Painel: `http://localhost:3000/admin`
 
 ## Credenciais do painel
@@ -161,7 +198,7 @@ Depois, entre no painel `/admin` e conecte o Google Calendar.
 
 ## Migrations
 
-A M7 adiciona a tabela `bookings`:
+Adiciona a tabela `bookings`:
 
 ```text
 bookings
@@ -221,7 +258,7 @@ Os testes existentes cobrem a geração do link/mensagem de WhatsApp e a transfo
 - observabilidade e rate limiting.
 
 
-## M8 — Idempotência e ciclo de vida das reservas
+## Idempotência e ciclo de vida das reservas
 
 A reserva agora usa `Idempotency-Key` para tornar retries seguros e evitar duplicação de eventos. O painel administrativo permite cancelar e reagendar reservas confirmadas. O cancelamento remove o evento do Google Calendar; o reagendamento atualiza o evento existente após nova validação de disponibilidade.
 
@@ -231,7 +268,7 @@ Endpoints administrativos:
 
 Migration: `0003_booking_lifecycle`.
 
-## M9 — Resiliência e falhas
+## Resiliência e falhas
 
 A integração com o Google Calendar foi preparada para cenários de falha: consultas de disponibilidade são retryable em erros transitórios (HTTP 429/5xx), enquanto a criação de eventos não é repetida automaticamente por ser uma operação externa não-idempotente.
 
@@ -241,11 +278,11 @@ Também foram adicionados testes unitários para recuperação idempotente, retr
 
 Em produção, o próximo passo seria adicionar observabilidade (logs estruturados, correlation/request ID e métricas) e uma fila/outbox para coordenar de forma ainda mais robusta o PostgreSQL e o Google Calendar.
 
-## M9 — Resiliência e idempotência externa
+## Resiliência e idempotência externa
 
 A integração com Google Calendar agora trata falhas transitórias com retry para operações seguras de leitura. A criação de evento não é repetida cegamente: o `Idempotency-Key` é gravado em `extendedProperties.private` do evento e pode ser usado para recuperar um evento criado antes de uma falha de rede. Erros do provider são traduzidos para respostas HTTP 502/503.
 
-## M10 — Observabilidade e readiness
+## Observabilidade e readiness
 
 A API agora possui uma camada mínima de observabilidade adequada para um serviço de portfólio/produção inicial:
 
@@ -288,7 +325,7 @@ O teste de integração não cria nem destrói o banco; ele espera que o ambient
 - auditoria de alterações;
 - OAuth Google por tenant.
 
-## M11 — Métricas, rate limiting e auditoria
+## Métricas, rate limiting e auditoria
 
 - Métricas Prometheus em `GET /metrics`.
 - Contadores de requests, duração HTTP, rate-limit e ciclo de vida de reservas.
@@ -298,7 +335,7 @@ O teste de integração não cria nem destrói o banco; ele espera que o ambient
 - Para múltiplas réplicas, o rate limiter em memória deve ser substituído por Redis ou outro storage compartilhado.
 - Em produção, o endpoint `/metrics` deve ser protegido na rede/reverse proxy.
 
-### M11 — testes
+### testes
 
 ```bash
 cd backend
@@ -306,7 +343,7 @@ pytest
 pytest -m integration
 ```
 
-### Decisões de produção do M11
+### Decisões de produção
 
 O rate limiter atual é propositalmente simples: funciona dentro de um único processo e não exige infraestrutura adicional. Em um deployment com múltiplas réplicas, a evolução natural é Redis para compartilhar os buckets entre instâncias.
 
@@ -314,7 +351,7 @@ As métricas evitam usar IDs numéricos/UUIDs diretamente como labels para reduz
 
 A auditoria é best-effort: uma falha ao gravar o log é registrada, mas não derruba uma operação de negócio já concluída. Para requisitos regulatórios mais rígidos, o próximo passo seria um mecanismo transacional/outbox.
 
-## M12 — Deployment de produção
+## Deployment de produção
 
 O projeto agora possui uma trilha de deployment separada da stack de desenvolvimento.
 
@@ -327,7 +364,7 @@ Internet
    v
  Caddy
    |
-   +---- /api/* ------> FastAPI :8000 ----> PostgreSQL :5432
+   +---- /api/* ------> Next.js :3000 --(BFF)--> FastAPI :8000 ----> PostgreSQL :5432
    |
    +---- / ------------> Next.js :3000
 ```
@@ -336,7 +373,7 @@ Componentes:
 
 - **Caddy** como reverse proxy e terminador TLS, com HTTPS automático para um domínio público.
 - **FastAPI** executando sem `--reload`, com múltiplos workers Uvicorn configuráveis.
-- **Next.js** em imagem standalone de produção.
+- **Next.js** em imagem standalone de produção, acting as BFF for `/api/*`.
 - **PostgreSQL 16** com volume persistente.
 - **Alembic** executado por um serviço de migration antes do backend.
 - volumes persistentes para PostgreSQL, token OAuth do Google e estado do Caddy.
@@ -348,7 +385,7 @@ Componentes:
 2. Aponte o DNS do domínio para o servidor.
 3. Copie `.env.prod.example` para `.env.prod` e preencha os secrets.
 4. Gere valores fortes para `POSTGRES_PASSWORD`, `APP_SECRET_KEY` e `ADMIN_PASSWORD`.
-5. Ajuste `APP_DOMAIN`, `PUBLIC_APP_URL` e `GOOGLE_REDIRECT_URI`.
+5. Ajuste `APP_DOMAIN`, `FRONTEND_ORIGIN` e `GOOGLE_REDIRECT_URI`.
 6. Execute:
 
 ```bash

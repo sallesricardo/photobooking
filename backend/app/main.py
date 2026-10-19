@@ -36,8 +36,10 @@ if settings.rate_limit_enabled:
         window_seconds=settings.rate_limit_window_seconds,
     )
 
-# origins = ["http://localhost:3000"]
-origins = ["*"]
+# O frontend consome a API via BFF (mesma origem), então o backend quase
+# nunca é acessado direto pelo navegador. Mantemos CORS restrito à origem
+# configurada em FRONTEND_ORIGIN para casos de acesso direto (ex.: debugging).
+origins = [origin.strip() for origin in settings.frontend_origin.split(",") if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,

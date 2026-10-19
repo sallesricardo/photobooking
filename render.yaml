@@ -62,7 +62,8 @@ services:
     envVars:
       - key: ENV
         value: demo
-      - key: NEXT_PUBLIC_API_URL
-        value: https://photobooking-api.onrender.com
+      # Consumida pelo BFF (Route Handler) em runtime. Não usar NEXT_PUBLIC_*:
+      # variáveis públicas são embutidas no bundle durante o build e não
+      # podem ser trocadas sem reconstruir a imagem.
       - key: BACKEND_URL
         value: https://photobooking-api.onrender.com

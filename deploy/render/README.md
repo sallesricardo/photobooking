@@ -33,4 +33,6 @@ The Blueprint uses the stable service names:
 - API: `https://photobooking-api.onrender.com`
 - Web: `https://photobooking-web.onrender.com`
 
-If you rename either service, update `NEXT_PUBLIC_API_URL`, `FRONTEND_ORIGIN`, and `GOOGLE_REDIRECT_URI` accordingly.
+If you rename either service, update `BACKEND_URL`, `FRONTEND_ORIGIN`, and `GOOGLE_REDIRECT_URI` accordingly.
+
+`BACKEND_URL` is read at runtime by the BFF route handler (`app/api/v1/[...path]/route.ts`), so the web service can be repointed to a different API without rebuilding the image. It must not be a `NEXT_PUBLIC_*` variable, since those are inlined into the browser bundle at build time.

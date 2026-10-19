@@ -52,7 +52,9 @@ def test_naive_datetime_is_normalized_to_app_timezone():
 
 
 def _http_error(status: int) -> HttpError:
-    return HttpError(SimpleNamespace(status=status), b"error")
+    # `HttpError` lê `resp.reason` na inicialização (google-api-python-client
+    # >= 2.201), então a resposta falsa precisa ter esse atributo.
+    return HttpError(SimpleNamespace(status=status, reason="Service Unavailable"), b"error")
 
 
 def test_create_booking_recovers_existing_event_by_idempotency_key(monkeypatch):

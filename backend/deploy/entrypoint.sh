@@ -4,6 +4,7 @@ set -eu
 if [ "${RUN_MIGRATIONS_ONLY:-false}" = "true" ]; then
   echo "Running database migrations..."
   exec alembic upgrade head
+  exit 0
 fi
 
 if [ "${RUN_MIGRATIONS_ON_START:-false}" = "true" ]; then

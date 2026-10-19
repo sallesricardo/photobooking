@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import styles from "./page.module.css";
+import { backendApiUrl } from "@/lib/backend";
+
 type Package = {
     id: number;
     name: string;
@@ -16,9 +18,13 @@ type Session = {
     packages: Package[]
 };
 
+/**
+ * Esta é uma Server Component: a chamada ao backend acontece no servidor,
+ * usando a URL resolvida em runtime (`BACKEND_URL`). O navegador nunca vê a
+ * URL do backend, e não há CORS envolvido.
+ */
 async function getSession(slug: string): Promise<Session | null> {
-    const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-    const r = await fetch(`${api}/api/v1/sessions/${slug}`, {
+    const r = await fetch(backendApiUrl(`/sessions/${encodeURIComponent(slug)}`), {
         cache: "no-store"
     });
     if (r.status === 404) return null;
@@ -27,9 +33,13 @@ async function getSession(slug: string): Promise<Session | null> {
 }
 
 function price(v: string) {
-    return Number(v).toLocaleString("pt-BR", {
+    const value = Number(v);
+    if (!Number.isFinite(value)) return "—";
+    return value.toLocaleString("pt-BR", {
         style: "currency",
         currency: "BRL",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
     });
 }
 
@@ -63,7 +73,7 @@ export default async function SessionPage({
                                 <div className={styles.footer}>
                                     <strong>{price(p.price)}</strong>
                                     <Link
-                                        href={`/agendamento?session=${s.slug}&package=${p.id}`}
+                                        href={`/agendamento?session=${encodeURIComponent(s.slug)}&package=${p.id}`}
                                         className={styles.button}
                                     >
                                         Agendar

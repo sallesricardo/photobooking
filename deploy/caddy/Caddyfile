@@ -9,8 +9,11 @@
         -Server
     }
 
+    # A API passa pelo BFF do Next.js: o navegador conversa apenas com o
+    # frontend (mesma origem), e o frontend repassa a chamada ao backend
+    # pela rede interna. O backend não é exposto publicamente.
     handle /api/* {
-        reverse_proxy backend:8000
+        reverse_proxy frontend:3000
     }
 
     handle /health/* {

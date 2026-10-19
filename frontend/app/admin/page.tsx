@@ -1,11 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "./page.module.css";
-
-// const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const API_URL = "http://localhost:8000";
+import { apiFetch } from "@/lib/api";
 
 type GoogleStatus = { connected: boolean; calendar_id: string };
 type Session = { authenticated: boolean; username: string };
@@ -25,6 +23,19 @@ type Booking = {
   created_at: string;
 };
 
+/**
+ * O painel consome a API via o BFF do Next.js (`/api/v1/...`), e não a URL do
+ * backend. Isso mantém o cookie de sessão same-origin e dispensa CORS.
+ *
+ * O prefixo `/api/v1` é adicionado automaticamente por `apiFetch`; aqui só é
+ * necessário para o link de navegação do OAuth.
+ */
+const API = "/api/v1";
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export default function AdminPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [status, setStatus] = useState<GoogleStatus | null>(null);
@@ -34,79 +45,71 @@ export default function AdminPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [actionId, setActionId] = useState<number | null>(null);
   const [rescheduleId, setRescheduleId] = useState<number | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState("");
   const [rescheduleTime, setRescheduleTime] = useState("");
 
-  async function loadSession() {
+  const loadSession = useCallback(async () => {
     try {
-      const response = await fetch(`${API_URL}/api/v1/auth/me`, { credentials: "include", cache: "no-store" });
-      if (!response.ok) {
-        setSession(null);
-        return;
-      }
-      setSession(await response.json());
+      const data = await apiFetch<Session>(`auth/me`);
+      setSession(data);
+    } catch {
+      // 401 (sem sessão) é o estado normal de quem não está autenticado.
+      setSession(null);
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  async function loadBookings() {
+  const loadBookings = useCallback(async () => {
     setBookingsLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/v1/admin/bookings`, { credentials: "include", cache: "no-store" });
-      if (response.status === 401) { setSession(null); return; }
-      if (!response.ok) throw new Error("Não foi possível carregar as reservas.");
-      setBookings(await response.json());
+      const data = await apiFetch<Booking[]>(`admin/bookings`);
+      setBookings(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao carregar reservas.");
+      setError(errorMessage(err, "Erro ao carregar reservas."));
     } finally {
       setBookingsLoading(false);
     }
-  }
+  }, []);
 
-  async function loadStatus() {
-    setError("");
+  const loadStatus = useCallback(async () => {
     try {
-      const response = await fetch(`${API_URL}/api/v1/google/status`, {
-        credentials: "include",
-        cache: "no-store",
-      });
-      if (response.status === 401) {
-        setSession(null);
-        return;
-      }
-      if (!response.ok) throw new Error("Não foi possível consultar a integração.");
-      setStatus(await response.json());
+      const data = await apiFetch<GoogleStatus>(`google/status`);
+      setStatus(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao consultar integração.");
+      setError(errorMessage(err, "Erro ao consultar integração."));
     }
-  }
-
-  useEffect(() => {
-    loadSession();
   }, []);
 
   useEffect(() => {
-    if (session) { loadStatus(); loadBookings(); }
-  }, [session]);
+    void loadSession();
+  }, [loadSession]);
+
+  useEffect(() => {
+    if (!session) return;
+    void loadStatus();
+    void loadBookings();
+  }, [session, loadStatus, loadBookings]);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    const response = await fetch(`${API_URL}/api/v1/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ username, password }),
-    });
-    if (!response.ok) {
-      setError("Usuário ou senha inválidos.");
-      return;
+    setSubmitting(true);
+    try {
+      await apiFetch(`auth/login`, {
+        method: "POST",
+        body: { username, password },
+      });
+      setPassword("");
+      await loadSession();
+    } catch (err) {
+      setError(errorMessage(err, "Não foi possível entrar."));
+    } finally {
+      setSubmitting(false);
     }
-    setPassword("");
-    await loadSession();
   }
 
   async function cancelBooking(id: number) {
@@ -114,15 +117,10 @@ export default function AdminPage() {
     setActionId(id);
     setError("");
     try {
-      const response = await fetch(`${API_URL}/api/v1/admin/bookings/${id}/cancel`, {
-        method: "POST",
-        credentials: "include",
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail ?? "Não foi possível cancelar a reserva.");
+      await apiFetch(`admin/bookings/${id}/cancel`, { method: "POST" });
       await loadBookings();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao cancelar reserva.");
+      setError(errorMessage(err, "Erro ao cancelar reserva."));
     } finally {
       setActionId(null);
     }
@@ -133,30 +131,34 @@ export default function AdminPage() {
     setActionId(id);
     setError("");
     try {
-      const localDate = new Date(`${rescheduleDate}T${rescheduleTime}:00`);
-      const response = await fetch(`${API_URL}/api/v1/admin/bookings/${id}/reschedule`, {
+      await apiFetch(`admin/bookings/${id}/reschedule`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ start_at: localDate.toISOString() }),
+        // Envio a hora local chosen pelo admin sem converter para UTC: o
+        // backend compara com os slots do provider, que são naive (mock).
+        body: { start_at: `${rescheduleDate}T${rescheduleTime}:00` },
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail ?? "Não foi possível reagendar a reserva.");
       setRescheduleId(null);
       setRescheduleDate("");
       setRescheduleTime("");
       await loadBookings();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao reagendar reserva.");
+      setError(errorMessage(err, "Erro ao reagendar reserva."));
     } finally {
       setActionId(null);
     }
   }
 
   async function handleLogout() {
-    await fetch(`${API_URL}/api/v1/auth/logout`, { method: "POST", credentials: "include" });
-    setSession(null);
-    setStatus(null);
+    setError("");
+    try {
+      await apiFetch(`auth/logout`, { method: "POST" });
+    } catch (err) {
+      setError(errorMessage(err, "Erro ao sair."));
+    } finally {
+      setSession(null);
+      setStatus(null);
+      setBookings([]);
+    }
   }
 
   if (loading) return <main className={styles.page}><div className={styles.container}>Carregando...</div></main>;
@@ -172,8 +174,10 @@ export default function AdminPage() {
           <form className={styles.loginCard} onSubmit={handleLogin}>
             <label>Usuário<input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required /></label>
             <label>Senha<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required /></label>
-            {error && <p className={styles.error}>{error}</p>}
-            <button className={styles.primary} type="submit">Entrar</button>
+            {error && <p className={styles.error} role="alert">{error}</p>}
+            <button className={styles.primary} type="submit" disabled={submitting}>
+              {submitting ? "Entrando..." : "Entrar"}
+            </button>
           </form>
           <p className={styles.note}>Credenciais são configuradas por variáveis de ambiente no backend.</p>
         </div>
@@ -201,9 +205,9 @@ export default function AdminPage() {
           <span className={status?.connected ? styles.badgeOk : styles.badge}>{status ? (status.connected ? "ONLINE" : "AÇÃO NECESSÁRIA") : "VERIFICANDO"}</span>
         </section>
 
-        {error && <p className={styles.error}>{error}</p>}
-        {!status?.connected && <a className={styles.primary} href={`${API_URL}/api/v1/google/authorize`}>Conectar Google Calendar</a>}
-        <button className={styles.secondary} type="button" onClick={() => { loadStatus(); loadBookings(); }}>Atualizar painel</button>
+        {error && <p className={styles.error} role="alert">{error}</p>}
+        {!status?.connected && <a className={styles.primary} href={`${API}/google/authorize`}>Conectar Google Calendar</a>}
+        <button className={styles.secondary} type="button" disabled={bookingsLoading} onClick={() => { void loadStatus(); void loadBookings(); }}>Atualizar painel</button>
 
         <section className={styles.reservations}>
           <div className={styles.sectionHeader}>
@@ -221,7 +225,7 @@ export default function AdminPage() {
                 <div>
                   <span className={styles.bookingDate}>{new Date(booking.start_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</span>
                   <h3>{booking.session}</h3>
-                  <p>{booking.package} · R$ {Number(booking.price).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
+                  <p>{booking.package} · R$ {Number(booking.price).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                 </div>
                 <div className={styles.bookingMeta}>
                   <span className={booking.status === "canceled" ? styles.badge : styles.badgeOk}>{booking.status.toUpperCase()}</span>
@@ -239,8 +243,10 @@ export default function AdminPage() {
                   )}
                   {rescheduleId === booking.id && booking.status === "confirmed" && (
                     <div className={styles.rescheduleForm}>
-                      <input type="date" value={rescheduleDate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setRescheduleDate(e.target.value)} />
-                      <input type="time" value={rescheduleTime} onChange={(e) => setRescheduleTime(e.target.value)} />
+                      <label htmlFor={`reschedule-date-${booking.id}`}>Data</label>
+                      <input id={`reschedule-date-${booking.id}`} type="date" value={rescheduleDate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setRescheduleDate(e.target.value)} />
+                      <label htmlFor={`reschedule-time-${booking.id}`}>Hora</label>
+                      <input id={`reschedule-time-${booking.id}`} type="time" value={rescheduleTime} onChange={(e) => setRescheduleTime(e.target.value)} />
                       <button type="button" className={styles.primary} disabled={actionId === booking.id} onClick={() => rescheduleBooking(booking.id)}>Salvar horário</button>
                     </div>
                   )}

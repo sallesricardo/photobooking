@@ -25,6 +25,7 @@ services:
       CALENDAR_PROVIDER: ${CALENDAR_PROVIDER:-mock}
       APP_TIMEZONE: ${APP_TIMEZONE:-America/Sao_Paulo}
       APP_SECRET_KEY: ${APP_SECRET_KEY:-change-me-in-production}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       WHATSAPP_PHONE: ${WHATSAPP_PHONE:-5511999999999}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-admin}
@@ -52,7 +53,9 @@ services:
       context: ./frontend
     container_name: photobooking-frontend
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:8000}
+      # Resolvida em runtime pelo BFF (Route Handler /api/v1/[...path]).
+      # O navegador só conversa com a própria origem do frontend.
+      BACKEND_URL: http://backend:8000
     ports:
       - "3000:3000"
     volumes:

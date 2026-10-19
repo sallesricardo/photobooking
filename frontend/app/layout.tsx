@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "PhotoBooking",
   description: "Agendamento de ensaios fotográficos.",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 function DemoBanner() {

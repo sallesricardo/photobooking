@@ -38,6 +38,7 @@ services:
       CALENDAR_PROVIDER: ${CALENDAR_PROVIDER:-mock}
       APP_TIMEZONE: ${APP_TIMEZONE:-America/Sao_Paulo}
       APP_SECRET_KEY: ${APP_SECRET_KEY}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       WHATSAPP_PHONE: ${WHATSAPP_PHONE}
       ADMIN_USERNAME: ${ADMIN_USERNAME}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
@@ -65,9 +66,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
-      args:
-        NEXT_PUBLIC_API_URL: ${PUBLIC_APP_URL}
     restart: unless-stopped
+    environment:
+      # URL interna do backend, resolvida em runtime pelo BFF.
+      BACKEND_URL: http://backend:8000
     expose: ["3000"]
     depends_on: [backend]
     networks: [internal]
