@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_database
 from app.core.config import settings
-from app.domain.agenda import MockAgendaProvider
+from app.domain.agenda import MockAgendaProvider, matches_slot, strip_timezone, to_app_timezone
 from app.integrations.google.calendar import (
     GoogleCalendarNotConfigured,
     GoogleCalendarOperationError,
@@ -23,6 +23,7 @@ from app.models.booking import Booking
 from app.repositories.booking import BookingRepository
 from app.repositories.session import SessionRepository
 from app.services.agenda import AgendaService
+from app.services.booking_whatsapp import build_booking_whatsapp_url
 from app.services.whatsapp import WhatsAppService
 from app.services.audit import record_audit
 from app.core.metrics import BOOKINGS_TOTAL
@@ -68,11 +69,19 @@ def _provider_name() -> str:
 
 
 def _build_response(booking: Booking) -> BookingResponse:
-    message = WhatsAppService(settings.whatsapp_phone).build_booking_message(
+    # A mensagem e o link são derivados do mesmo horário persistido, para que
+    # nunca divergam entre si (nem do horário real da reserva).
+    whatsapp_url = build_booking_whatsapp_url(
         session_name=booking.session.name,
         package_name=booking.package.name,
         price=booking.package.price,
         start_at=booking.start_at,
+    )
+    message = WhatsAppService(settings.whatsapp_phone).build_booking_message(
+        session_name=booking.session.name,
+        package_name=booking.package.name,
+        price=booking.package.price,
+        start_at=strip_timezone(booking.start_at),
     )
     return BookingResponse(
         id=booking.id,
@@ -85,7 +94,7 @@ def _build_response(booking: Booking) -> BookingResponse:
         calendar_event_id=booking.provider_event_id,
         status=booking.status,
         message=message,
-        whatsapp_url=booking.whatsapp_url,
+        whatsapp_url=whatsapp_url,
     )
 
 
@@ -128,20 +137,24 @@ def create_whatsapp_booking(
         raise HTTPException(status_code=404, detail="Pacote não encontrado.")
 
     provider = _provider()
+    # O cliente pode enviar a hora de parede local (naive) ou o slot exato
+    # devolvido pelo availability (aware no fuso do Google Calendar).
+    # Normalizamos para o fuso da aplicação antes de comparar.
+    start_at = to_app_timezone(request.start_at)
     try:
-        slots = provider.list_available_slots(date=request.start_at.date(), duration_minutes=package.duration_minutes)
+        slots = provider.list_available_slots(date=start_at.date(), duration_minutes=package.duration_minutes)
     except GoogleCalendarNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail="Não foi possível validar a disponibilidade.") from exc
-    if request.start_at not in {slot.start for slot in slots}:
+    if not any(matches_slot(start_at, slot.start) for slot in slots):
         raise HTTPException(status_code=409, detail="Esse horário não está disponível.")
 
     event_id = None
     if settings.calendar_provider == "google":
         try:
             event_id = provider.create_booking(
-                start_at=request.start_at,
+                start_at=start_at,
                 duration_minutes=package.duration_minutes,
                 title=f"{session.name} - {package.name}",
                 description=f"Ensaio: {session.name}\nPacote: {package.name}\nValor: R$ {package.price:.2f}",
@@ -156,13 +169,17 @@ def create_whatsapp_booking(
         except Exception as exc:
             raise HTTPException(status_code=502, detail="Não foi possível criar o evento no Google Calendar.") from exc
 
-    whatsapp = WhatsAppService(settings.whatsapp_phone)
-    message = whatsapp.build_booking_message(session_name=session.name, package_name=package.name, price=package.price, start_at=request.start_at)
+    whatsapp_url = build_booking_whatsapp_url(
+        session_name=session.name,
+        package_name=package.name,
+        price=package.price,
+        start_at=start_at,
+    )
     booking = Booking(
-        session_id=session.id, package_id=package.id, start_at=request.start_at,
-        end_at=request.start_at + timedelta(minutes=package.duration_minutes),
+        session_id=session.id, package_id=package.id, start_at=start_at,
+        end_at=start_at + timedelta(minutes=package.duration_minutes),
         provider=_provider_name(), provider_event_id=event_id, status="confirmed",
-        idempotency_key=key, whatsapp_url=whatsapp.build_url(message),
+        idempotency_key=key, whatsapp_url=whatsapp_url,
     )
     try:
         created = repository.create(booking)

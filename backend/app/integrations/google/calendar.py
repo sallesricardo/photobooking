@@ -66,15 +66,19 @@ class GoogleCalendarProvider:
     def list_available_slots(
         self,
         *,
-        target_date: date,
+        date: date,
         duration_minutes: int,
         opening_hour: int = 9,
         closing_hour: int = 18,
         slot_interval_minutes: int = 30,
     ) -> list[AvailabilitySlot]:
+        # O nome do parâmetro precisa seguir o `AgendaProvider` (e o
+        # `MockAgendaProvider`): os chamadores usam `date=`. Nome divergente
+        # (`target_date=`) levanta TypeError antes de qualquer verificação de
+        # credencial, quebrando a integração inteira.
         service = self._service()
-        opening = datetime.combine(target_date, time(opening_hour), self.timezone)
-        closing = datetime.combine(target_date, time(closing_hour), self.timezone)
+        opening = datetime.combine(date, time(opening_hour), self.timezone)
+        closing = datetime.combine(date, time(closing_hour), self.timezone)
         duration = timedelta(minutes=duration_minutes)
         step = timedelta(minutes=slot_interval_minutes)
 

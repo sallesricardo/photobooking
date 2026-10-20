@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.auth import get_admin_username
 from app.api.dependencies import get_database
 from app.core.config import settings
-from app.domain.agenda import MockAgendaProvider
+from app.domain.agenda import MockAgendaProvider, matches_slot, to_app_timezone
 from app.integrations.google.calendar import (
     GoogleCalendarNotConfigured,
     GoogleCalendarOperationError,
@@ -17,6 +17,7 @@ from app.integrations.google.calendar import (
 )
 from app.repositories.booking import BookingRepository
 from app.services.audit import record_audit
+from app.services.booking_whatsapp import build_booking_whatsapp_url
 from app.core.metrics import BOOKINGS_TOTAL
 
 router = APIRouter(prefix="/admin/bookings", tags=["admin-bookings"])
@@ -45,6 +46,15 @@ class RescheduleRequest(BaseModel):
 
 def _provider():
     return GoogleCalendarProvider() if settings.calendar_provider == "google" else MockAgendaProvider()
+
+
+def _build_whatsapp_url(booking, start_at) -> str:
+    return build_booking_whatsapp_url(
+        session_name=booking.session.name,
+        package_name=booking.package.name,
+        price=booking.package.price,
+        start_at=start_at,
+    )
 
 
 def _serialize(item):
@@ -126,9 +136,12 @@ def reschedule_booking(
         return _serialize(booking)
 
     provider = _provider()
+    # O admin pode enviar a hora de parede local (naive) ou o slot exato
+    # devolvido pelo availability (aware no fuso do Google Calendar).
+    start_at = to_app_timezone(request.start_at)
     try:
         slots = provider.list_available_slots(
-            date=request.start_at.date(),
+            date=start_at.date(),
             duration_minutes=booking.package.duration_minutes,
         )
     except GoogleCalendarNotConfigured as exc:
@@ -136,14 +149,14 @@ def reschedule_booking(
     except Exception as exc:
         raise HTTPException(status_code=502, detail="Não foi possível consultar a disponibilidade.") from exc
 
-    if request.start_at not in {slot.start for slot in slots}:
+    if not any(matches_slot(start_at, slot.start) for slot in slots):
         raise HTTPException(status_code=409, detail="O novo horário não está disponível.")
 
     if booking.provider_event_id:
         try:
             provider.reschedule_booking(
                 provider_event_id=booking.provider_event_id,
-                new_start_at=request.start_at,
+                new_start_at=start_at,
                 duration_minutes=booking.package.duration_minutes,
             )
         except ValueError as exc:
@@ -158,9 +171,12 @@ def reschedule_booking(
             raise HTTPException(status_code=502, detail="Não foi possível reagendar o evento na agenda.") from exc
 
     from datetime import timedelta
-    booking.start_at = request.start_at
-    logger.info("booking_rescheduled booking_id=%s new_start_at=%s", booking.id, request.start_at.isoformat())
-    booking.end_at = request.start_at + timedelta(minutes=booking.package.duration_minutes)
+    booking.start_at = start_at
+    logger.info("booking_rescheduled booking_id=%s new_start_at=%s", booking.id, start_at.isoformat())
+    booking.end_at = start_at + timedelta(minutes=booking.package.duration_minutes)
+    # A mensagem do WhatsApp carrega a data/hora: precisa ser regenerada,
+    # senão o cliente recebe o horário antigo depois de um reagendamento.
+    booking.whatsapp_url = _build_whatsapp_url(booking, start_at)
     db.commit()
     db.refresh(booking)
     record_audit(
@@ -169,7 +185,7 @@ def reschedule_booking(
         entity_type="booking",
         entity_id=str(booking.id),
         actor=_username,
-        metadata={"provider": booking.provider, "start_at": request.start_at.isoformat()},
+        metadata={"provider": booking.provider, "start_at": start_at.isoformat()},
     )
     BOOKINGS_TOTAL.labels(operation="reschedule", provider=booking.provider, status=booking.status).inc()
     return _serialize(booking)

@@ -1,10 +1,50 @@
+import inspect
 from datetime import date, datetime
 from types import SimpleNamespace
 
 import pytest
 from googleapiclient.errors import HttpError
 
+from app.domain.agenda.mock import MockAgendaProvider
+from app.domain.agenda.provider import AgendaProvider
 from app.integrations.google.calendar import GoogleCalendarProvider
+from app.services.agenda import AgendaService
+
+
+def test_providers_satisfy_the_agenda_provider_contract():
+    """Todos os providers precisam ter a MESMA assinatura do protocolo.
+
+    Sem este teste, um provider pode divergir no nome do parâmetro (ex.:
+    `target_date=` em vez de `date=`) e falhar com TypeError em runtime,
+    enquanto a suíte continua verde por só chamar o provider diretamente.
+    """
+    expected = set(inspect.signature(AgendaProvider.list_available_slots).parameters) - {"self"}
+
+    for provider_class in (MockAgendaProvider, GoogleCalendarProvider):
+        actual = set(inspect.signature(provider_class.list_available_slots).parameters) - {"self"}
+        assert expected.issubset(actual), (
+            f"{provider_class.__name__}.list_available_slots não implementa o "
+            f"AgendaProvider: esperado {sorted(expected)}, encontrado {sorted(actual)}"
+        )
+
+
+def test_agenda_service_calls_providers_with_protocol_signature(monkeypatch):
+    """O AgendaService passa `date=`; o provider precisa aceitar esse nome."""
+    provider = GoogleCalendarProvider()
+    captured = {}
+
+    def fake_slots(*, date, duration_minutes, **kwargs):
+        captured["date"] = date
+        captured["duration_minutes"] = duration_minutes
+        return []
+
+    monkeypatch.setattr(provider, "list_available_slots", fake_slots)
+
+    AgendaService(provider).available_slots(
+        target_date=date(2026, 10, 20), duration_minutes=60
+    )
+
+    assert captured == {"date": date(2026, 10, 20), "duration_minutes": 60}
 
 
 def test_available_slots_are_generated_from_freebusy(monkeypatch):
@@ -33,7 +73,7 @@ def test_available_slots_are_generated_from_freebusy(monkeypatch):
     monkeypatch.setattr(provider, "_service", lambda: fake_service)
 
     slots = provider.list_available_slots(
-        target_date=date(2026, 10, 20),
+        date=date(2026, 10, 20),
         duration_minutes=60,
         opening_hour=9,
         closing_hour=12,
@@ -109,7 +149,7 @@ def test_transient_freebusy_error_is_retried(monkeypatch):
     monkeypatch.setattr("time.sleep", lambda _: None)
 
     slots = provider.list_available_slots(
-        target_date=date(2026, 10, 20),
+        date=date(2026, 10, 20),
         duration_minutes=60,
         opening_hour=9,
         closing_hour=10,
