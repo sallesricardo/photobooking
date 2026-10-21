@@ -62,6 +62,8 @@ services:
     envVars:
       - key: ENV
         value: demo
+      - key: HOSTNAME
+        value: 0.0.0.0
       # Consumida pelo BFF (Route Handler) em runtime. Não usar NEXT_PUBLIC_*:
       # variáveis públicas são embutidas no bundle durante o build e não
       # podem ser trocadas sem reconstruir a imagem.
