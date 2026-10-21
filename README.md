@@ -2,6 +2,10 @@
 
 Projeto de portfólio de um sistema real de contratação de ensaios fotográficos.
 
+**[Ver demonstração ao vivo →](https://photobooking-web.onrender.com)**
+
+<img src="docs/images/home.png" alt="Landing page do PhotoBooking com o catálogo de ensaios" width="100%">
+
 ## O que o projeto demonstra
 
 - Next.js 14 + TypeScript + CSS Modules
@@ -45,6 +49,28 @@ Gera mensagem
 WhatsApp
 ```
 
+## Telas
+
+### Escolha do pacote
+
+O catálogo vem do backend e cada ensaio exibe seus pacotes, duração e valor.
+
+<img src="docs/images/packages.png" alt="Página do ensaio com os pacotes Essencial e Premium" width="100%">
+
+### Agendamento
+
+Os horários livres são consultados no Google Calendar (FreeBusy) e recalculados
+no servidor antes de confirmar a reserva.
+
+<img src="docs/images/booking.png" alt="Tela de agendamento com a grade de horários disponíveis" width="100%">
+
+### Confirmação no WhatsApp
+
+A reserva é registrada no PostgreSQL e a mensagem é pré-preenchida com o
+pacote, o valor e o horário escolhidos.
+
+<img src="docs/images/whatsapp.png" alt="Mensagem pré-preenchida com os dados da reserva no WhatsApp" width="100%">
+
 ## Painel administrativo
 
 O `/admin` agora possui autenticação e permite acompanhar:
@@ -59,6 +85,13 @@ O `/admin` agora possui autenticação e permite acompanhar:
 - link para continuar o atendimento no WhatsApp.
 
 A autenticação usa uma sessão assinada em cookie `HttpOnly`, com expiração configurável.
+
+<img src="docs/images/admin_login.png" alt="Tela de login do painel administrativo" width="100%">
+
+Após o login, o painel lista as reservas recentes e permite cancelar ou
+reagendar cada uma:
+
+<img src="docs/images/admin.png" alt="Painel administrativo com as reservas recentes" width="100%">
 
 ## Arquitetura
 
@@ -127,6 +160,9 @@ const created = await apiFetch("booking/whatsapp", {
 ```
 
 ## Ambiente de demonstração
+
+A demonstração pública está em
+[photobooking-web.onrender.com](https://photobooking-web.onrender.com).
 
 Quando `ENV=demo`, o frontend exibe um banner no topo informando que esta é uma demonstração e que os dados cadastrados não são persistentes.
 
@@ -457,6 +493,9 @@ DATABASE_URL=sqlite:///./data/photobooking.db
 SQLAlchemy e Alembic usam a mesma camada de aplicação para as duas opções. O código habilita `foreign_keys` no SQLite e as migrations usam batch mode quando uma operação DDL não é suportada diretamente pelo SQLite.
 
 ## Deploy no Render
+
+Uma versão de demonstração está publicada em
+[photobooking-web.onrender.com](https://photobooking-web.onrender.com).
 
 O repositório inclui `render.yaml` para criar os serviços de API e frontend. O serviço da API pode usar SQLite sem adicionar uma dependência externa:
 
